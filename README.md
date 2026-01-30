@@ -92,4 +92,4 @@ All models support extended thinking, tool calling, image inputs, and prompt cac
 
 ## License
 
-MIT © Isaac Raja
+MIT
