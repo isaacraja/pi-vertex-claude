@@ -55,6 +55,15 @@ import { parse as partialParse } from "partial-json";
 
 const VERTEX_CLAUDE_MODELS = [
 	{
+		id: "claude-opus-4-6",
+		name: "Claude Opus 4.6 (Vertex)",
+		reasoning: true,
+		input: ["text", "image"] as ("text" | "image")[],
+		cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+		contextWindow: 200000,
+		maxTokens: 32000,
+	},
+	{
 		id: "claude-opus-4-5@20251101",
 		name: "Claude Opus 4.5 (Vertex)",
 		reasoning: true,
