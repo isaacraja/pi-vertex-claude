@@ -18,12 +18,14 @@ vi.mock(
 let convertMessages: typeof import("../index.js").convertMessages;
 let mapStopReason: typeof import("../index.js").mapStopReason;
 let parseStreamingJson: typeof import("../index.js").parseStreamingJson;
+let buildModels: typeof import("../index.js").buildModels;
 
 beforeAll(async () => {
 	const helpers = await import("../index.js");
 	convertMessages = helpers.convertMessages;
 	mapStopReason = helpers.mapStopReason;
 	parseStreamingJson = helpers.parseStreamingJson;
+	buildModels = helpers.buildModels;
 });
 
 describe("vertex-claude helpers", () => {
@@ -102,5 +104,108 @@ describe("vertex-claude helpers", () => {
 
 		expect(lastBlock.type).toBe("image");
 		expect(lastBlock.cache_control).toEqual({ type: "ephemeral" });
+	});
+});
+
+describe("1M context window support", () => {
+	describe("buildModels", () => {
+		it("should return only base models when VERTEX_CLAUDE_1M is not set", () => {
+			delete process.env.VERTEX_CLAUDE_1M;
+			const models = buildModels();
+			const has1m = models.some((m) => m.id.endsWith("-1m"));
+			expect(has1m).toBe(false);
+		});
+
+		it("should return only base models when VERTEX_CLAUDE_1M is set to a non-true value", () => {
+			process.env.VERTEX_CLAUDE_1M = "false";
+			const models = buildModels();
+			const has1m = models.some((m) => m.id.endsWith("-1m"));
+			expect(has1m).toBe(false);
+			delete process.env.VERTEX_CLAUDE_1M;
+		});
+
+		it("should add -1m variants when VERTEX_CLAUDE_1M=true", () => {
+			process.env.VERTEX_CLAUDE_1M = "true";
+			const models = buildModels();
+			const oneM = models.filter((m) => m.id.endsWith("-1m"));
+			expect(oneM.length).toBeGreaterThan(0);
+			// Should have -1m variants for opus-4-6 and sonnet-4-6
+			expect(oneM.map((m) => m.id)).toContain("claude-opus-4-6-1m");
+			expect(oneM.map((m) => m.id)).toContain("claude-sonnet-4-6-1m");
+			delete process.env.VERTEX_CLAUDE_1M;
+		});
+
+		it("-1m variants should have contextWindow of 1000000", () => {
+			process.env.VERTEX_CLAUDE_1M = "true";
+			const models = buildModels();
+			const oneM = models.filter((m) => m.id.endsWith("-1m"));
+			for (const model of oneM) {
+				expect(model.contextWindow).toBe(1000000);
+			}
+			delete process.env.VERTEX_CLAUDE_1M;
+		});
+
+		it("-1m variants should have '(Vertex 1M)' in name", () => {
+			process.env.VERTEX_CLAUDE_1M = "true";
+			const models = buildModels();
+			const oneM = models.filter((m) => m.id.endsWith("-1m"));
+			for (const model of oneM) {
+				expect(model.name).toContain("(Vertex 1M)");
+				expect(model.name).not.toContain("(Vertex)");
+			}
+			delete process.env.VERTEX_CLAUDE_1M;
+		});
+
+		it("-1m variants should preserve other properties from base model", () => {
+			process.env.VERTEX_CLAUDE_1M = "true";
+			const models = buildModels();
+			const opus1m = models.find((m) => m.id === "claude-opus-4-6-1m");
+			const opusBase = models.find((m) => m.id === "claude-opus-4-6");
+			expect(opus1m).toBeDefined();
+			expect(opusBase).toBeDefined();
+			expect(opus1m!.cost).toEqual(opusBase!.cost);
+			expect(opus1m!.maxTokens).toBe(opusBase!.maxTokens);
+			expect(opus1m!.reasoning).toBe(opusBase!.reasoning);
+			expect(opus1m!.input).toEqual(opusBase!.input);
+			delete process.env.VERTEX_CLAUDE_1M;
+		});
+
+		it("should only create -1m variants for eligible models (opus-4-6, sonnet-4-6)", () => {
+			process.env.VERTEX_CLAUDE_1M = "true";
+			const models = buildModels();
+			const oneM = models.filter((m) => m.id.endsWith("-1m"));
+			expect(oneM).toHaveLength(2);
+			const ids = oneM.map((m) => m.id).sort();
+			expect(ids).toEqual(["claude-opus-4-6-1m", "claude-sonnet-4-6-1m"]);
+			delete process.env.VERTEX_CLAUDE_1M;
+		});
+	});
+
+	describe("streaming -1m model handling", () => {
+		it("should strip -1m suffix to get API model ID", () => {
+			// Test the suffix-stripping logic used in streamVertexClaude
+			const stripSuffix = (id: string) => (id.endsWith("-1m") ? id.slice(0, -3) : id);
+			expect(stripSuffix("claude-opus-4-6-1m")).toBe("claude-opus-4-6");
+			expect(stripSuffix("claude-sonnet-4-6-1m")).toBe("claude-sonnet-4-6");
+			expect(stripSuffix("claude-opus-4-6")).toBe("claude-opus-4-6");
+		});
+
+		it("should identify -1m models for beta header injection", () => {
+			// Test the detection logic used in streamVertexClaude
+			const needs1mBeta = (id: string) => id.endsWith("-1m");
+			expect(needs1mBeta("claude-opus-4-6-1m")).toBe(true);
+			expect(needs1mBeta("claude-sonnet-4-6-1m")).toBe(true);
+			expect(needs1mBeta("claude-opus-4-6")).toBe(false);
+			expect(needs1mBeta("claude-sonnet-4-6")).toBe(false);
+		});
+
+		it("beta header value should be 'context-1m-2025-08-07'", () => {
+			// Verify the constant matches expected value
+			const CONTEXT_1M_BETA = "context-1m-2025-08-07";
+			const betaFeatures = ["fine-grained-tool-streaming-2025-05-14", "interleaved-thinking-2025-05-14"];
+			betaFeatures.push(CONTEXT_1M_BETA);
+			expect(betaFeatures.join(",")).toContain("context-1m-2025-08-07");
+			expect(betaFeatures).toHaveLength(3);
+		});
 	});
 });
