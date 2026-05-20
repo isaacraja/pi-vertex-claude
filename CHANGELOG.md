@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-15
+
+### Added
+- Claude Sonnet 4.6 model (`claude-sonnet-4-6`)
+- 1M context window support via `VERTEX_CLAUDE_1M=true` environment variable
+- `-1m` model variants for Claude Opus 4.6 and Sonnet 4.6 with 1M token context window
+
+### Changed
+- Updated Claude Opus 4.6 max output tokens from 32K to 128K
+
 ## [0.1.3] - 2026-02-07
 
 ### Added

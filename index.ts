@@ -61,7 +61,16 @@ const VERTEX_CLAUDE_MODELS = [
 		input: ["text", "image"] as ("text" | "image")[],
 		cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
 		contextWindow: 200000,
-		maxTokens: 32000,
+		maxTokens: 128000,
+	},
+	{
+		id: "claude-sonnet-4-6",
+		name: "Claude Sonnet 4.6 (Vertex)",
+		reasoning: true,
+		input: ["text", "image"] as ("text" | "image")[],
+		cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+		contextWindow: 200000,
+		maxTokens: 64000,
 	},
 	{
 		id: "claude-opus-4-5@20251101",
@@ -145,6 +154,29 @@ const VERTEX_CLAUDE_MODELS = [
 		maxTokens: 8192,
 	},
 ];
+
+// Model IDs that support 1M context window via the anthropic-beta header
+const CONTEXT_1M_MODEL_IDS = new Set(["claude-opus-4-6", "claude-sonnet-4-6"]);
+const CONTEXT_1M_BETA = "context-1m-2025-08-07";
+
+export function buildModels(): typeof VERTEX_CLAUDE_MODELS {
+	const models = [...VERTEX_CLAUDE_MODELS];
+
+	if (process.env.VERTEX_CLAUDE_1M === "true") {
+		for (const model of VERTEX_CLAUDE_MODELS) {
+			if (CONTEXT_1M_MODEL_IDS.has(model.id)) {
+				models.push({
+					...model,
+					id: `${model.id}-1m`,
+					name: model.name.replace("(Vertex)", "(Vertex 1M)"),
+					contextWindow: 1000000,
+				});
+			}
+		}
+	}
+
+	return models;
+}
 
 // =============================================================================
 // Helper Functions
@@ -403,6 +435,11 @@ export function streamVertexClaude(
 			// Configure beta features for thinking and fine-grained streaming
 			const betaFeatures = ["fine-grained-tool-streaming-2025-05-14", "interleaved-thinking-2025-05-14"];
 
+			// Add 1M context beta header for -1m model variants
+			if (model.id.endsWith("-1m")) {
+				betaFeatures.push(CONTEXT_1M_BETA);
+			}
+
 			// Create AnthropicVertex client - uses Google ADC automatically
 			const client = new AnthropicVertex({
 				projectId: projectInfo.id,
@@ -412,9 +449,10 @@ export function streamVertexClaude(
 				},
 			});
 
-			// Build request params
+			// Build request params — strip -1m suffix for the actual API model ID
+			const apiModelId = model.id.endsWith("-1m") ? model.id.slice(0, -3) : model.id;
 			const params: MessageCreateParamsStreaming = {
-				model: model.id,
+				model: apiModelId,
 				messages: convertMessages(context.messages, model),
 				max_tokens: options?.maxTokens || Math.floor(model.maxTokens / 3),
 				stream: true,
@@ -615,7 +653,7 @@ export default function (pi: ExtensionAPI) {
 		apiKey: projectInfo.envVar, // Env var for detection
 		api: "vertex-claude-api", // Custom API identifier
 
-		models: VERTEX_CLAUDE_MODELS,
+		models: buildModels(),
 
 		streamSimple: streamVertexClaude,
 	});

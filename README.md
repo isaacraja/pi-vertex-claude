@@ -25,7 +25,7 @@ export GOOGLE_CLOUD_PROJECT=your-project-id
 Use the provider:
 
 ```bash
-pi --provider google-vertex-claude --model claude-sonnet-4@20250514
+pi --provider google-vertex-claude --model claude-sonnet-4-6
 ```
 
 ## Shell Helper
@@ -35,7 +35,7 @@ Add to `~/.bashrc` or `~/.zshrc`:
 ```bash
 piv() {
   GOOGLE_CLOUD_PROJECT=your-project-id \
-  pi --provider google-vertex-claude --model claude-sonnet-4@20250514 "$@"
+  pi --provider google-vertex-claude --model claude-sonnet-4-6 "$@"
 }
 ```
 
@@ -43,6 +43,8 @@ piv() {
 
 | Model | Context | Output |
 |-------|---------|--------|
+| `claude-opus-4-6` | 200K | 128K |
+| `claude-sonnet-4-6` | 200K | 64K |
 | `claude-opus-4-5@20251101` | 200K | 32K |
 | `claude-opus-4-1@20250805` | 200K | 32K |
 | `claude-opus-4@20250514` | 200K | 32K |
@@ -52,6 +54,29 @@ piv() {
 | `claude-haiku-4-5@20251001` | 200K | 64K |
 | `claude-3-5-sonnet-v2@20241022` | 200K | 8K |
 | `claude-3-5-haiku@20241022` | 200K | 8K |
+
+## 1M Context Window
+
+Claude Opus 4.6 and Sonnet 4.6 support up to 1M tokens of context via the `context-1m-2025-08-07` beta header.
+
+To enable 1M model variants, set:
+
+```bash
+export VERTEX_CLAUDE_1M=true
+```
+
+This adds `-1m` variants alongside the standard models:
+
+| Model | Context | Output |
+|-------|---------|--------|
+| `claude-opus-4-6-1m` | 1M | 128K |
+| `claude-sonnet-4-6-1m` | 1M | 64K |
+
+Use them like any other model:
+
+```bash
+pi --provider google-vertex-claude --model claude-opus-4-6-1m
+```
 
 ## Prerequisites
 
