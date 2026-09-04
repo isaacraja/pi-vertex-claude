@@ -55,6 +55,15 @@ import { parse as partialParse } from "partial-json";
 
 const VERTEX_CLAUDE_MODELS = [
 	{
+		id: "claude-opus-4-8",
+		name: "Claude Opus 4.8 (Vertex)",
+		reasoning: true,
+		input: ["text", "image"] as ("text" | "image")[],
+		cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+		contextWindow: 200000,
+		maxTokens: 128000,
+	},
+	{
 		id: "claude-opus-4-6",
 		name: "Claude Opus 4.6 (Vertex)",
 		reasoning: true,
@@ -156,7 +165,7 @@ const VERTEX_CLAUDE_MODELS = [
 ];
 
 // Model IDs that support 1M context window via the anthropic-beta header
-const CONTEXT_1M_MODEL_IDS = new Set(["claude-opus-4-6", "claude-sonnet-4-6"]);
+const CONTEXT_1M_MODEL_IDS = new Set(["claude-opus-4-8", "claude-opus-4-6", "claude-sonnet-4-6"]);
 const CONTEXT_1M_BETA = "context-1m-2025-08-07";
 
 export function buildModels(): typeof VERTEX_CLAUDE_MODELS {
@@ -441,13 +450,19 @@ export function streamVertexClaude(
 			}
 
 			// Create AnthropicVertex client - uses Google ADC automatically
-			const client = new AnthropicVertex({
+			// The SDK constructs "https://{region}-aiplatform.googleapis.com" but the
+			// global endpoint is "https://aiplatform.googleapis.com" (no prefix).
+			const clientOpts: Record<string, any> = {
 				projectId: projectInfo.id,
 				region: region,
 				defaultHeaders: {
 					"anthropic-beta": betaFeatures.join(","),
 				},
-			});
+			};
+			if (region === "global") {
+				clientOpts.baseURL = "https://aiplatform.googleapis.com/v1";
+			}
+			const client = new AnthropicVertex(clientOpts);
 
 			// Build request params — strip -1m suffix for the actual API model ID
 			const apiModelId = model.id.endsWith("-1m") ? model.id.slice(0, -3) : model.id;
@@ -498,10 +513,20 @@ export function streamVertexClaude(
 					params.max_tokens = thinkingBudget + minOutputTokens;
 				}
 
-				params.thinking = {
-					type: "enabled",
-					budget_tokens: thinkingBudget,
-				};
+				// Opus 4.8+ uses adaptive thinking with output_config.effort
+				const isAdaptiveModel = apiModelId.startsWith("claude-opus-4-8") || apiModelId.startsWith("claude-opus-5");
+				if (isAdaptiveModel) {
+					const effortMap: Record<string, string> = {
+						minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "high",
+					};
+					(params as any).thinking = { type: "adaptive" };
+					(params as any).output_config = { effort: effortMap[options.reasoning] ?? "medium" };
+				} else {
+					params.thinking = {
+						type: "enabled",
+						budget_tokens: thinkingBudget,
+					};
+				}
 			}
 
 			// Start streaming
@@ -648,8 +673,12 @@ export default function (pi: ExtensionAPI) {
 	// Get region from environment for baseUrl (used for display, SDK handles actual endpoint)
 	const region = process.env.GOOGLE_CLOUD_LOCATION || process.env.CLOUD_ML_REGION || "us-east5";
 
+	const displayUrl = region === "global"
+		? "https://aiplatform.googleapis.com"
+		: `https://${region}-aiplatform.googleapis.com`;
+
 	pi.registerProvider("google-vertex-claude", {
-		baseUrl: `https://${region}-aiplatform.googleapis.com`, // Display URL, SDK handles actual endpoint
+		baseUrl: displayUrl,
 		apiKey: projectInfo.envVar, // Env var for detection
 		api: "vertex-claude-api", // Custom API identifier
 
